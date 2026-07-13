@@ -138,10 +138,14 @@ What follows from that:
 
 - **Coroutines run on the main thread**, since they run inside the timer callback. That is why the
   handlers can touch `bpy` data at all. On a worker thread this would die instantly.
-- **Calling `bpy.ops` from a coroutine is still not proper.** `util.ModalExecuteMixin` defers the
-  operator through a modal timer so it executes at a sane point in Blender's cycle. The `skip_modal`
-  preference turns that detour off — upstream's escape hatch, and the first thing to suspect if an
-  unexplained crash shows up.
+- **Calling `bpy.ops` from a coroutine is still not proper**, and the detour upstream used to make it
+  palatable was itself a crash. `util.ModalExecuteMixin` called `modal_handler_add()` from
+  `execute()` — an invoke()-only API. From a timer callback there is no proper area/region context,
+  so a half-formed modal handler got parked on the window and Blender tripped over it later, inside
+  `wm_event_do_notifiers`, with no Python frame left on the stack. The `skip_modal` preference
+  (upstream's own escape hatch, "might fix some crashes") is now **on by default**, which skips the
+  detour entirely: the coroutine already runs on the main thread, so it just does the work inline.
+  If you ever turn `skip_modal` back off, know that you are re-arming that crash.
 - **Never call `asyncio.all_tasks()` in this kick.** It used to be here, and it crashed Blender.
   The kick runs thousands of times a second, and `all_tasks()` copies the internal weakset of tasks.
   When the connection drops or the machine wakes from sleep, tasks die and get collected en masse;
@@ -196,6 +200,17 @@ The dispatch table in `Sync.lua` maps 1:1 onto `encode.py`:
 
 Sprites larger than the `maxsize` setting are not sent. The client reconnects on its own after a
 drop, so the Blender server must keep listening once a client goes away.
+
+**Reconnect is a state-restoration problem, not just a socket problem.** Two things have to happen
+again or the link comes back up and silently does nothing:
+
+- The `"change"` listener on the active sprite. It is dropped on CLOSE and re-attached on OPEN;
+  OPEN calls `off()` before `on()` so a reconnect neither misses it (blender died without a clean
+  close, so CLOSE never fired) nor double-registers it.
+- The pixels themselves. Blender sends `L` (texture list) immediately on every connection, so
+  `handleTextureList` doubles as the "just (re)connected" hook and pushes the current sprite once.
+  Upstream skipped that push whenever the sprite was already in the previous `syncList` — which
+  after a reconnect is precisely the case where Blender is sitting on stale pixels.
 
 ## Dependencies
 

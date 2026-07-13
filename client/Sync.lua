@@ -300,7 +300,6 @@ else
         local _id = string.unpack("<BH", msg)
         local offset = 2
         local ml = #msg
-        local synced = spr and syncList[spr.filename]
 
         syncList = {}
 
@@ -311,9 +310,11 @@ else
             offset = offset + 4 + len
         end
 
-        if not synced then
-            syncSprite()
-        end
+        -- blender sends this list right after every connection, so this is also our
+        -- "just (re)connected" hook: push the current sprite once so both sides start out
+        -- agreeing. it used to skip this whenever the sprite was already in the old syncList,
+        -- which after a reconnect is exactly the case where blender has stale pixels.
+        syncSprite()
     end
 
 
@@ -416,6 +417,10 @@ else
             dlg:modify{ id="status", text="Sync ON" }
 
             if spr ~= nil then
+                -- this may be a reconnect, in which case the old listener was dropped on CLOSE
+                -- (or never dropped at all, if blender died without a clean close). off() first
+                -- so we neither miss the listener nor register it twice
+                spr.events:off(syncSprite)
                 spr.events:on("change", syncSprite)
             end
 

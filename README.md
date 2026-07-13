@@ -48,8 +48,17 @@ then connect from Aseprite (`File > Sync`).
   `asyncio.all_tasks()` thousands of times a second; when a dropped connection or a wake-from-sleep
   killed tasks en masse, it walked freed weakrefs and took an access violation inside the Python DLL
   — Blender went down with no traceback. See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+- **Fixed a second crash, in the modal detour.** `ModalExecuteMixin` called `modal_handler_add()`
+  from `execute()` — an invoke()-only API — leaving a half-formed modal handler on the window for
+  Blender to trip over later. Upstream's `skip_modal` escape hatch ("might fix some crashes") is now
+  on by default.
+- **Fixed sync silently dying after a reconnect.** The link came back up but painting did nothing:
+  the sprite's `"change"` listener was never re-attached, and Blender was left holding stale pixels
+  because the texture-list handler skipped its initial push whenever the sprite was already known.
 - *Send UV* is now available in the **3D Viewport** too, targeting whatever document Aseprite has
   open (upstream only offered it in the Image Editor, where it needs an open texture).
+- *Send UV* defaults to a 2048 render with 1px lines, which lands 1:1 on screen pixels at the 800%
+  zoom pixel art is worked at.
 
 ## Documentation
 
