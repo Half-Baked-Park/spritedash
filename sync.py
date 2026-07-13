@@ -110,7 +110,15 @@ class Server():
 
     async def _receive(self, request) -> WebSocketResponse:
         ws = web.WebSocketResponse(max_msg_size=0)
-        self._ws = ws
+
+        # a second client (or a reconnect we never noticed dropping) must not leave the previous
+        # _receive coroutine running -- it would keep reporting and racing this one
+        old, self._ws = self._ws, ws
+        if old is not None and not old.closed:
+            try:
+                await old.close()
+            except Exception:
+                traceback.print_exc()
 
         await ws.prepare(request)
 

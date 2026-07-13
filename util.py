@@ -115,7 +115,8 @@ class SB_OT_update_image(bpy.types.Operator, ModalExecuteMixin):
                 break
         else:
             # to avoid accidentally reviving deleted images, we ignore anything doesn't exist already
-            return
+            # NOTE must be a set: without the modal detour this is the operator's own return value
+            return {'CANCELLED'}
 
         if not img.has_data:
             # load *some* data so that the image can be packed, and then updated

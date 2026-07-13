@@ -84,7 +84,7 @@ class SB_Preferences(bpy.types.AddonPreferences):
     skip_modal: bpy.props.BoolProperty(
         name="No modal timers",
         description="Change the way the changes are applied to blender data. Degrades the experience but might fix some crashes",
-        default=False)
+        default=True)
 
 
     def template_box(self, layout, label="Box"):
