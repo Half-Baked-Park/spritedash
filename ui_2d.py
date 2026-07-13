@@ -149,7 +149,8 @@ class SB_OT_send_uv(bpy.types.Operator):
 
     def uvmap_size(self, context):
         scale = addon.prefs.uv_scale
-        size = [128, 128]
+        # 대상을 못 찾는 3d 뷰 쪽에서도 기본 스프라이트 크기 × scale 이 나오게 (256 × 8 = 2048)
+        size = [256, 256]
 
         img = self.target_image(context)
         if img is not None:

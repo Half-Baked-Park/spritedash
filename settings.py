@@ -79,7 +79,7 @@ class SB_Preferences(bpy.types.AddonPreferences):
     uv_weight: bpy.props.FloatProperty(
         name="UV Thickness",
         description="Default thickness of the UV map with scale appied. For example, if `UV scale` is 2 and thickness is 3, the lines will be 1.5 pixel thick in aseprite",
-        default=4.0)
+        default=1.0)
 
     skip_modal: bpy.props.BoolProperty(
         name="No modal timers",
