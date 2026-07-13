@@ -25,7 +25,7 @@ Two parts that talk over a local WebSocket (default `localhost:34613`) — insta
 1. `Edit > Preferences > Add-ons > Install from Disk…` → pick `spritedash_blender.zip`.
 2. Enable **Spritedash**.
 3. Open the **Spritedash** panel in the sidebar (`N`) of the **3D Viewport**
-   (Connection + Reference) or the **Image/UV Editor** (Connection + Sprite).
+   (Connection + Send UV + Reference) or the **Image/UV Editor** (Connection + Sprite).
 
 ### Aseprite extension
 1. `Edit > Preferences > Extensions > Add Extension…` → pick `spritedash.aseprite-extension`.
@@ -44,6 +44,17 @@ then connect from Aseprite (`File > Sync`).
   References in the 3D Viewport, connection in both) — replacing the old Sync panel and the
   Sprite header menu.
 - Renamed the project and its Blender/Aseprite identifiers to Spritedash.
+- **Fixed a hard crash on disconnect and on system sleep.** The asyncio kick timer walked
+  `asyncio.all_tasks()` thousands of times a second; when a dropped connection or a wake-from-sleep
+  killed tasks en masse, it walked freed weakrefs and took an access violation inside the Python DLL
+  — Blender went down with no traceback. See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
+- *Send UV* is now available in the **3D Viewport** too, targeting whatever document Aseprite has
+  open (upstream only offered it in the Image Editor, where it needs an open texture).
+
+## Documentation
+
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — module map, wire protocol, data flow, and the
+  event-loop constraints you need to know before touching `async_loop.py`.
 
 ## Acknowledgements
 

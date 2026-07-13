@@ -24,6 +24,7 @@ from aiohttp.web_ws import WebSocketResponse
 import bpy
 import asyncio
 import aiohttp
+import traceback
 from aiohttp import web
 from time import time
 
@@ -44,11 +45,13 @@ class Server():
 
 
     def send(self, msg, binary=True):
-        if self._ws is not None:
-            if binary:
-                asyncio.ensure_future(self._ws.send_bytes(msg, False))
-            else:
-                asyncio.ensure_future(self._ws.send_str(msg, False))
+        if not self.connected:
+            return
+
+        if binary:
+            asyncio.ensure_future(self._ws.send_bytes(msg, False))
+        else:
+            asyncio.ensure_future(self._ws.send_str(msg, False))
 
 
     @property
@@ -91,34 +94,53 @@ class Server():
             await self._site._runner.cleanup()
             await self._server.shutdown()
 
-        asyncio.ensure_future(_stop_a())
+        # the kick timer stops pumping the loop right after this, so the shutdown has to finish
+        # here instead of being left as a floating task
+        try:
+            asyncio.get_event_loop().run_until_complete(asyncio.wait_for(_stop_a(), timeout=5.0))
+        except Exception:
+            # closing a socket that is already dead (aseprite gone, machine slept) throws, and
+            # the server is going away either way
+            traceback.print_exc()
+
+        self._ws = None
         async_loop.erase_async_loop()
         util.refresh()
 
 
     async def _receive(self, request) -> WebSocketResponse:
-        self._ws = web.WebSocketResponse(max_msg_size=0)
+        ws = web.WebSocketResponse(max_msg_size=0)
+        self._ws = ws
 
-        await self._ws.prepare(request)
+        await ws.prepare(request)
 
         # client connected
         imgs = tuple(util.image_name(img) for img in bpy.data.images)
-        await self._ws.send_bytes(encode.texture_list(imgs), False)
+        await ws.send_bytes(encode.texture_list(imgs), False)
         bpy.ops.spritedash.report(message_type='INFO', message="Aseprite connected")
         util.refresh()
 
-        async for msg in self._ws:
-            if msg.type == aiohttp.WSMsgType.BINARY:
-                await addon.handlers.process(msg.data)
+        try:
+            async for msg in ws:
+                if msg.type == aiohttp.WSMsgType.BINARY:
+                    await addon.handlers.process(msg.data)
 
-            elif msg.type == aiohttp.WSMsgType.ERROR:
-                bpy.ops.spritedash.report(message_type='ERROR', message=f"Connection closed with exception {self._ws.exception()}")
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    bpy.ops.spritedash.report(message_type='ERROR', message=f"Connection closed with exception {ws.exception()}")
 
-        # client disconnected
-        bpy.ops.spritedash.report(message_type='INFO', message="Aseprite disconnected")
-        util.refresh()
+        except (OSError, aiohttp.ClientError):
+            # the socket was torn down under us rather than closed politely, which is what a
+            # sleeping machine or a killed aseprite looks like from here
+            traceback.print_exc()
 
-        return self._ws
+        finally:
+            # client disconnected
+            if self._ws is ws:
+                self._ws = None
+            bpy.ops.spritedash.report(message_type='INFO', message="Aseprite disconnected")
+            util.refresh()
+
+        return ws
 
 
 class SB_OT_serv_start(bpy.types.Operator):

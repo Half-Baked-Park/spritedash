@@ -82,7 +82,22 @@ class SB_OT_send_uv(bpy.types.Operator):
 
     @classmethod
     def poll(self, context):
-        return addon.connected and context.edit_object is not None or context.image_paint_object is not None
+        return addon.connected and (context.edit_object is not None or context.image_paint_object is not None)
+
+
+    def target_image(self, context):
+        """The texture to draw the UVs onto. The image editor's own image when run from there,
+        otherwise one that's open in an image editor elsewhere in the screen, or the paint canvas"""
+        space = context.space_data
+
+        if space is not None and space.type == 'IMAGE_EDITOR' and space.image is not None:
+            return space.image
+
+        for area in context.screen.areas:
+            if area.type == 'IMAGE_EDITOR' and area.spaces.active.image is not None:
+                return area.spaces.active.image
+
+        return context.scene.tool_settings.image_paint.canvas
 
 
     def list_uv(self):
@@ -132,12 +147,13 @@ class SB_OT_send_uv(bpy.types.Operator):
         return lines
 
 
-    def uvmap_size(self):
+    def uvmap_size(self, context):
         scale = addon.prefs.uv_scale
         size = [128, 128]
 
-        if bpy.context.edit_image is not None:
-            size = bpy.context.edit_image.size
+        img = self.target_image(context)
+        if img is not None:
+            size = img.size
 
         return [int(size[0] * scale), int(size[1] * scale)]
 
@@ -147,11 +163,11 @@ class SB_OT_send_uv(bpy.types.Operator):
         source = ""
 
         if self.destination == 'texture':
-            try:
-                source = util.image_name(context.area.spaces.active.image)
-            except:
-                self.report({"ERROR"}, "'Texture Source' only works with a file-associated texture")
+            img = self.target_image(context)
+            if img is None:
+                self.report({"ERROR"}, "'Texture Source' needs a texture open in an Image Editor, or set as the texture paint canvas")
                 return {'CANCELLED'}
+            source = util.image_name(img)
 
         aa = addon.prefs.uv_aa
         weight = self.weight
@@ -206,7 +222,7 @@ class SB_OT_send_uv(bpy.types.Operator):
 
     def invoke(self, context, event):
         if tuple(self.size) == (1, 1):
-            self.size = self.uvmap_size()
+            self.size = self.uvmap_size(context)
 
         if tuple(self.color) == (0.0, 0.0, 0.0, 0.0):
             self.color = addon.prefs.uv_color

@@ -128,7 +128,7 @@ class SB_OT_reference_reload(bpy.types.Operator):
 class SB_OT_reference_reload_all(bpy.types.Operator):
     bl_idname = "spritedash.reference_reload_all"
     bl_label = "Reload All References"
-    bl_description = "Reload all references (including non-pribamabase's), while keeping them prescaled"
+    bl_description = "Reload all references (including non-spritedash's), while keeping them prescaled"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -181,6 +181,12 @@ class SB_PT_spritedash_3d(_SB_PT_spritedash, bpy.types.Panel):
         self.draw_connection(context)
 
         layout = self.layout
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Sprite:")
+        # 3D 뷰에는 image editor 컨텍스트가 없으니 aseprite가 열어둔 문서에 그리는 쪽이 기본
+        col.operator("spritedash.set_uv", icon='UV_VERTEXSEL').destination = 'active'
+
         layout.separator()
         col = layout.column(align=True)
         col.label(text="Reference:")

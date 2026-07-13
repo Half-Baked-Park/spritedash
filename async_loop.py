@@ -17,22 +17,23 @@
 """Manages the asyncio loop"""
 
 import asyncio
-import traceback
 import concurrent.futures
 import logging
-import gc
 
 import bpy
 from bpy.app.handlers import persistent
 
 log = logging.getLogger(__name__)
 
-# Keeps track of whether a loop-kicking operator is already running.
-_stop_after_this_kick = False
+# The loop that the timer kicks. Kept here instead of calling asyncio.get_event_loop() on
+# every kick, which is deprecated since python 3.12 and needlessly expensive besides.
+_loop = None
 
 
 def setup_asyncio_executor():
     """Sets up AsyncIO to run properly on each platform"""
+
+    global _loop
 
     import sys
 
@@ -50,91 +51,42 @@ def setup_asyncio_executor():
     loop.set_default_executor(executor)
     # loop.set_debug(True)
 
+    _loop = loop
+
 
 @persistent
-def kick_async_loop() -> bool:
+def kick_async_loop():
     """Performs a single iteration of the asyncio event loop.
 
-    :return: whether the asyncio loop should stop after this kick.
+    :return: seconds until the next kick, or None to unregister the timer.
     """
 
-    global _stop_after_this_kick
-    loop = asyncio.get_event_loop()
+    loop = _loop
 
-    # Even when we want to stop, we always need to do one more
-    # 'kick' to handle task-done callbacks.
-    _stop_after_this_kick = False
+    if loop is None or loop.is_closed():
+        log.warning('loop closed, stopping the timer.')
+        return None
 
-    if loop.is_closed():
-        log.warning('loop closed, stopping immediately.')
-        return True
-
-    all_tasks = None
-    if bpy.app.version >= (2, 92):
-        all_tasks = asyncio.all_tasks(loop)
-    else:
-        all_tasks = asyncio.Task.all_tasks()
-
-    if not len(all_tasks):
-        log.debug('no more scheduled tasks, stopping after this kick.')
-        _stop_after_this_kick = True
-
-    elif all(task.done() for task in all_tasks):
-        log.debug('all %i tasks are done, fetching results and stopping after this kick.',
-                  len(all_tasks))
-        _stop_after_this_kick = True
-
-        # Clean up circular references between tasks.
-        gc.collect()
-
-        for task_idx, task in enumerate(all_tasks):
-            if not task.done():
-                continue
-
-            # noinspection PyBroadException
-            try:
-                res = task.result()
-                log.debug('   task #%i: result=%r', task_idx, res)
-            except asyncio.CancelledError:
-                # No problem, we want to stop anyway.
-                log.debug('   task #%i: cancelled', task_idx)
-            except Exception:
-                print('{}: resulted in exception'.format(task))
-                traceback.print_exc()
-
-            # for ref in gc.get_referrers(task):
-            #     log.debug('      - referred by %s', ref)
-
+    # NOTE do NOT walk asyncio.all_tasks() here. This runs many times a second, and all_tasks()
+    # copies the internal weakset of tasks; when a connection drops or the machine wakes from
+    # sleep, tasks die and get collected en masse, and the copy walks freed weakrefs. That is an
+    # access violation inside python313.dll, i.e. blender goes down with no python traceback.
     loop.stop()
     loop.run_forever()
 
-    return 0.00001
+    return 0.001
 
 
 def ensure_async_loop():
+    if bpy.app.timers.is_registered(kick_async_loop):
+        return
+
     log.debug('Starting asyncio loop')
     bpy.app.timers.register(kick_async_loop, persistent=True)
 
 
 def erase_async_loop():
-    global _loop_kicking_operator_running
-
     log.debug('Erasing async loop')
-
-    loop = asyncio.get_event_loop()
-    loop.stop()
 
     if bpy.app.timers.is_registered(kick_async_loop):
         bpy.app.timers.unregister(kick_async_loop)
-
-    # loop synchronously for a bit so that the server can fully shut down. normally doesn't take long
-    ticks = 0
-    while ticks < 9000:
-        kick_async_loop()
-
-        if _stop_after_this_kick:
-            break
-
-        ticks = ticks + 1
-    else:
-        bpy.ops.spritedash.report(message_type='ERROR', message="Failed to stop the server loop")
