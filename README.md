@@ -15,7 +15,7 @@ references in the viewport.
 **GPL-3.0-or-later** — same as the original Pribambase. See [`COPYING`](./COPYING).
 
 - Original work © 2021 lampysprites.
-- Modifications © 2026 `<YOUR NAME / HANDLE>`.
+- Modifications © 2026 Half-Baked-Park.
 
 ## Installation
 
